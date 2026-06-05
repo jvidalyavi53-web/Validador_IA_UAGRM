@@ -10,7 +10,7 @@ import requests
 # 1. CONFIGURACIÓN DE RUTAS Y CONSTANTES
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-API_URL = "http://localhost:8000/api/v1"
+API_URL = "https://validador-ia-uagrm.onrender.com/api/v1"
 
 def get_asset(filename):
     path = os.path.join(BASE_DIR, "assets", filename)
