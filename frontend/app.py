@@ -275,15 +275,20 @@ with st.sidebar:
                     archivos = {"file": (archivo_subido.name, archivo_subido.getvalue(), "application/pdf")}
                     cabeceras = {"Authorization": f"Bearer {st.session_state.access_token}"}
                     
-                    # 🚀 AHORA ESPERA HASTA RECIBIR EL STATUS 200 (SÍNCRONO)
                     res = requests.post(f"{API_URL}/documents/upload", data=datos_form, files=archivos, headers=cabeceras)
                     
                     if res.status_code == 200:
                         st.session_state.biblioteca.append(archivo_subido.name)
                         st.success("Documento blindado e ingestadon en Base Vectorial.")
                         exito = True
-                    else: 
-                        st.error(f"Fallo en el OCR o Servidor: {res.json().get('detail', res.text)}")
+                    else:
+                        # 🚀 Escudo contra HTML/JSONDecodeError
+                        try:
+                            error_msg = res.json().get('detail', 'Error desconocido del servidor.')
+                        except ValueError:
+                            error_msg = f"El servidor falló catastróficamente (Falta Tesseract en Linux o Timeout). Status: {res.status_code}"
+                        st.error(f"Fallo en la API: {error_msg}")
+
                 except requests.exceptions.ConnectionError: 
                     st.error("Error crítico: El servidor Backend ha colapsado o está apagado.")
                 
