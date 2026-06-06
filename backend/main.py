@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
-
 import shutil
 from dotenv import load_dotenv
 
@@ -67,7 +66,6 @@ ALLOWED_ORIGINS = [
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 MAX_REQUEST_SECONDS = int(os.getenv("MAX_REQUEST_SECONDS", "50"))
 
-
 # ==============================================================================
 # CORPUS GLOBAL (compartido por todos los usuarios autenticados)
 # ==============================================================================
@@ -125,12 +123,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 processor = DocumentProcessor(
     tesseract_cmd_path=os.getenv("TESSERACT_CMD") or None,
 )
 chunker = TextChunker()
-
 
 # ==============================================================================
 # AUTENTICACIÓN (RBAC)
@@ -412,6 +408,9 @@ async def upload_document(
     }
 
 
+# ==============================================================================
+# ESTA ES LA RUTA NUEVA QUE SOLUCIONA EL CARTEL AMARILLO EN EL FRONTEND
+# ==============================================================================
 @app.get("/api/v1/documents", response_model=dict)
 def list_documents(
     current_user: models.Usuario = Depends(get_current_user),
@@ -423,22 +422,25 @@ def list_documents(
         .order_by(models.Documento.fecha_subida.desc())
         .all()
     )
+    
+    # Creamos un arreglo con la info formateada para que el frontend lo pueda leer
+    documentos_formateados = []
+    for d in docs:
+        documentos_formateados.append({
+            "id": d.id,
+            "nombre_archivo": d.nombre_archivo,
+            "tamaño_bytes": d.tamaño_bytes,
+            "fecha_subida": d.fecha_subida.isoformat() if d.fecha_subida else None,
+            "subido_por": d.subido_por.username if d.subido_por else "Desconocido",
+        })
+
     return {
         "total": len(docs),
         "corpus_chunks": (
             global_vdb._doc_matrix.shape[0]
             if global_vdb._doc_matrix is not None else 0
         ),
-        "documentos": [
-            {
-                "id": d.id,
-                "nombre_archivo": d.nombre_archivo,
-                "tamaño_bytes": d.tamaño_bytes,
-                "fecha_subida": d.fecha_subida.isoformat() if d.fecha_subida else None,
-                "subido_por": d.subido_por.username if d.subido_por else None,
-            }
-            for d in docs
-        ],
+        "documentos": documentos_formateados,
     }
 
 
