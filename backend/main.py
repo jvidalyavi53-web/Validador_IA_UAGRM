@@ -211,7 +211,7 @@ class Token(BaseModel):
 # ==============================================================================
 # ENDPOINTS DE SALUD
 # ==============================================================================
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {
         "status": "ok",
@@ -220,7 +220,7 @@ def root():
     }
 
 
-@app.get("/api/v1/healthz")
+@app.api_route("/api/v1/healthz", methods=["GET", "HEAD"])
 def healthz(db: Session = Depends(get_db)):
     db_status = "ok"
     try:
