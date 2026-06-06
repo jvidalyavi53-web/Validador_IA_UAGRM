@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: validador-ia-uagrm
+    runtime: python
+    plan: free
+    branch: main
+    rootDir: .
+    buildCommand: |
+      apt-get update && apt-get install -y --no-install-recommends $(cat Aptfile) && rm -rf /var/lib/apt/lists/*
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: ENVIRONMENT
+        value: production
+      - key: EMBEDDING_PROVIDER
+        value: huggingface_api
+      - key: GROQ_TIMEOUT
+        value: "30"
+      - key: GROQ_MAX_RETRIES
+        value: "2"
+      - key: MAX_UPLOAD_MB
+        value: "50"
+      - key: MAX_REQUEST_SECONDS
+        value: "50"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: HF_API_KEY
+        sync: false
