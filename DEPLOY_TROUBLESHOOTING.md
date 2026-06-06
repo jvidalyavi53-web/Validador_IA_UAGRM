@@ -12,11 +12,19 @@
                                 ┌──────────┴──────────┐
                                 ▼                     ▼
                        ┌────────────────┐    ┌─────────────────┐
-                       │  Neon.tech     │    │  HuggingFace    │
-                       │  PostgreSQL    │    │  Inference API  │
-                       │  (usuarios,    │    │  (embeddings)   │
+                       │  Neon.tech     │    │  Groq API       │
+                       │  PostgreSQL    │    │  (LLM: Llama)   │
+                       │  (usuarios,    │    │                 │
                        │   historial)   │    │                 │
                        └────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │  VectorDB LOCAL │
+                       │  TF-IDF +       │
+                       │  scikit-learn   │
+                       │  (sin red)      │
+                       └─────────────────┘
 ```
 
 ---
@@ -30,8 +38,6 @@
 | `GROQ_API_KEY` | `gsk_...` | https://console.groq.com/keys | ✅ |
 | `DATABASE_URL` | `postgresql://...neon...` | https://console.neon.tech | ✅ |
 | `SECRET_KEY` | (64+ chars) | `python -c "import secrets; print(secrets.token_urlsafe(64))"` | ✅ |
-| `HF_API_KEY` | `hf_...` | https://huggingface.co/settings/tokens (rol: Read) | ✅ |
-| `EMBEDDING_PROVIDER` | `huggingface_api` | — | ✅ |
 | `ENVIRONMENT` | `production` | — | ✅ |
 | `ALLOWED_ORIGINS` | URL de tu app Streamlit | https://validador-ia-uagrm-ficct.streamlit.app | ✅ |
 | `GROQ_TIMEOUT` | `30` | default | no |
@@ -40,6 +46,8 @@
 | `MAX_REQUEST_SECONDS` | `50` | default | no |
 | `TESSERACT_CMD` | (no setear en Render) | default | no |
 | `ADMIN_SECRET` | `FICCT2026` | default | no |
+
+> **Nota:** El sistema ya **NO** usa HuggingFace Inference API. La búsqueda vectorial es **100% local** con TF-IDF + scikit-learn. La variable `HF_API_KEY` ya no es necesaria.
 
 ### Frontend (Streamlit Cloud → Settings → Secrets)
 
@@ -180,6 +188,13 @@ DELETE FROM usuarios WHERE username = 'TU_USUARIO';
 ### ❌ "Credenciales incorrectas" tras refresh de Streamlit
 
 La cookie de sesión fue limpiada o el token expiró (24h). Solo volver a loguear.
+
+### ❌ `Failed to resolve 'api-inference.huggingface.co'`
+
+**Bug histórico — ya corregido.** La versión actual usa TF-IDF local (scikit-learn) en vez de la API de HuggingFace. Si el error reaparece:
+1. Verificar que `vector_db.py` NO importe `chromadb` ni `embedding_functions`
+2. Confirmar que `requirements.txt` NO tenga `chromadb`
+3. Redesplegar
 
 ### ❌ PDFs escaneados no se procesan
 
