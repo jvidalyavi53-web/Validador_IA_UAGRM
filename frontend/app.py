@@ -5,7 +5,17 @@ from pathlib import Path
 
 import streamlit as st
 import requests
-from streamlit_cookies_controller import CookieController
+
+try:
+    from streamlit_cookies_controller import CookieController
+    COOKIES_AVAILABLE = True
+except ImportError as exc:
+    COOKIES_AVAILABLE = False
+    CookieController = None
+    logging.getLogger("UAGRM_Frontend").warning(
+        f"streamlit_cookies_controller no disponible ({exc}). "
+        "La sesión NO se restaurará tras refrescar el navegador."
+    )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - FE - %(levelname)s - %(message)s")
 logger = logging.getLogger("UAGRM_Frontend")
@@ -173,11 +183,15 @@ COOKIE_NAME = "uagrm_session"
 
 
 def get_cookie_controller():
+    if not COOKIES_AVAILABLE:
+        raise RuntimeError("streamlit_cookies_controller no instalado")
     return CookieController()
 
 
 def restore_session_from_cookie() -> bool:
     """Intenta rehidratar la sesión desde la cookie. Devuelve True si lo logró."""
+    if not COOKIES_AVAILABLE:
+        return False
     try:
         controller = get_cookie_controller()
         token = controller.get(COOKIE_NAME)
@@ -221,6 +235,8 @@ def restore_session_from_cookie() -> bool:
 
 
 def save_session_to_cookie(token: str) -> None:
+    if not COOKIES_AVAILABLE:
+        return
     try:
         controller = get_cookie_controller()
         controller.set(COOKIE_NAME, token)
@@ -229,6 +245,8 @@ def save_session_to_cookie(token: str) -> None:
 
 
 def clear_session_cookie() -> None:
+    if not COOKIES_AVAILABLE:
+        return
     try:
         controller = get_cookie_controller()
         controller.remove(COOKIE_NAME)

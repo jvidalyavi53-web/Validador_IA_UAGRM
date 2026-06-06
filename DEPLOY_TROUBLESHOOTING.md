@@ -49,31 +49,27 @@ API_URL = "https://validador-ia-uagrm.onrender.com/api/v1"
 
 ---
 
-## Build Command de Render (CRÍTICO)
+## Build Command de Render
 
-Para que **Tesseract OCR funcione** en producción, hay que modificar el Build Command en Render Dashboard:
+**NO es necesario modificar el Build Command.** Render's Python runtime es read-only filesystem y no permite `apt-get install`. En lugar de eso, el proyecto usa **RapidOCR** (pure-Python, ONNX Runtime) que no necesita binarios del sistema.
 
-1. **Settings** → **Build & Deploy** → **Build Command**
-2. Reemplazar por:
-
+El Build Command default de Render es:
 ```bash
-apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng libgl1 && rm -rf /var/lib/apt/lists/* && pip install --upgrade pip && pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-3. **Save Changes** → Render redeployará (~3-5 min la primera vez).
-
-**Verificación:** en los logs del nuevo deploy deben aparecer líneas como:
+**Verificación:** en los logs del nuevo deploy debés ver:
 ```
-Reading package lists...
-The following NEW packages will be installed:
-  tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng libgl1
-Setting up tesseract-ocr (4.1.1-...)
+Successfully installed rapidocr-onnxruntime-1.4.4 ...
 ```
 
-Y **NO** debe aparecer:
+Y al iniciar el backend:
 ```
-WARNING - Tesseract NO disponible
+INFO - OCR engine: RapidOCR (ONNX, pure-Python).
+INFO - OCR chain (en orden de intento): ['rapidocr']
 ```
+
+**Si querés Tesseract nativo** (mejor calidad OCR en español), tendrías que migrar a un Dockerfile. No es necesario por ahora.
 
 ---
 
@@ -152,7 +148,7 @@ Streamlit intentó importar el módulo antes de que terminara el `uv pip install
 
 ### ❌ "Tesseract NO disponible"
 
-El Build Command de Render no incluye `apt-get install`. Aplicar el Build Command documentado arriba y redeployar.
+**Solución actual:** el sistema usa **RapidOCR** (pure-Python) como fallback automático. El warning de Tesseract es esperable y la app sigue funcionando. No requiere acción.
 
 ### ❌ Render healthcheck reporta 405 "Method Not Allowed"
 
