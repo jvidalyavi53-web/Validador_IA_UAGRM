@@ -7,25 +7,39 @@
 │  Streamlit Cloud    │  HTTPS  │  Render (FastAPI)    │
 │  (frontend/app.py)  │ ──────► │  (backend/main.py)   │
 │                     │         │  Uvicorn:10000       │
+│  - Login/Registro   │         │  - /auth/*           │
+│  - Chat RAG         │         │  - /documents/*      │
+│  - Catálogo corpus  │         │  - /chat/ask         │
 └─────────────────────┘         └──────────┬───────────┘
                                            │
                                 ┌──────────┴──────────┐
                                 ▼                     ▼
                        ┌────────────────┐    ┌─────────────────┐
                        │  Neon.tech     │    │  Groq API       │
-                       │  PostgreSQL    │    │  (LLM: Llama)   │
-                       │  (usuarios,    │    │                 │
-                       │   historial)   │    │                 │
-                       └────────────────┘    └─────────────────┘
+                       │  PostgreSQL    │    │  (LLM: Llama    │
+                       │  - usuarios    │    │   3.3 70B)      │
+                       │  - documentos  │    │                 │
+                       │  - chunks ★    │    │                 │
+                       │  - conversas   │    │                 │
+                       └────────┬───────┘    └─────────────────┘
                                 │
+                                │ startup: SELECT * FROM chunks
+                                │ upload:  INSERT chunks
+                                │ clear:   DELETE chunks
                                 ▼
                        ┌─────────────────┐
-                       │  VectorDB LOCAL │
+                       │  Corpus GLOBAL  │
                        │  TF-IDF +       │
                        │  scikit-learn   │
-                       │  (sin red)      │
+                       │  (en RAM)       │
                        └─────────────────┘
+                              ▲
+                              │ todos los usuarios autenticados
+                              │ consultan el MISMO índice
 ```
+
+★ El corpus es **compartido e institucional**: cuando un Administrador sube un PDF,
+todos los Visitantes y demás Admins ven el contenido en sus próximas consultas.
 
 ---
 
@@ -189,6 +203,17 @@ DELETE FROM usuarios WHERE username = 'TU_USUARIO';
 
 La cookie de sesión fue limpiada o el token expiró (24h). Solo volver a loguear.
 
+### ❌ El admin ve documentos pero el visitante no
+
+**Bug histórico — corregido en v7.0.0.** Las versiones ≤6.x creaban un `VectorDB` por usuario en RAM (`active_clusters: dict` con clave `username`). El admin subía a su cluster; el visitante preguntaba y obtenía un cluster vacío recién creado.
+
+**Fix actual:** un único `global_vdb` + `global_engine` compartidos por todos los usuarios autenticados. Los chunks se persisten en la tabla `chunks` de PostgreSQL (sobreviven a restarts). Al startup, `load_corpus_from_db()` reconstruye el índice TF-IDF con todos los chunks existentes.
+
+Si reaparece:
+1. Verificar que `backend/main.py` NO contenga `active_clusters` ni `get_user_cluster`
+2. Confirmar que la tabla `chunks` existe en Neon (psql → `\d chunks`)
+3. Verificar en logs: `Corpus institucional cargado: N chunks en memoria.`
+
 ### ❌ `Failed to resolve 'api-inference.huggingface.co'`
 
 **Bug histórico — ya corregido.** La versión actual usa TF-IDF local (scikit-learn) en vez de la API de HuggingFace. Si el error reaparece:
@@ -207,17 +232,24 @@ Si después de instalar Tesseract un PDF escaneado sigue dando error, verificar:
 
 ## Optimización para producción
 
-### Embeddings remotos (HF API) - ✅ ya activo
+### Vector store local (TF-IDF) - ✅ ya activo
 
-Con `EMBEDDING_PROVIDER=huggingface_api` no se carga ningún modelo local. Las embeddings se calculan en la nube de HuggingFace, ahorrando ~400MB de RAM en Render Free Tier.
+`backend/database/vector_db.py` usa `scikit-learn.TfidfVectorizer` + `cosine_similarity`. Cero llamadas externas, 5-20 MB de RAM, sin API keys, sin rate-limits.
 
-### Límite de cuota HF
+### Persistencia del corpus (PostgreSQL) - ✅ ya activo (v7.0.0)
 
-La Inference API free tier tiene ~1000 req/h. Si se excede, los PDFs subidos fallarán con error de HuggingFace. **Mitigación futura:** cachear embeddings por hash de chunk.
+Los chunks se persisten en la tabla `chunks` de Neon. Al startup, `load_corpus_from_db()` reconstruye el índice TF-IDF desde la DB. Sobrevive a:
+- Sleep wake-up del Free Tier
+- Redespliegues
+- Restart del worker
+
+### Concurrencia en uploads
+
+`corpus_lock` (`asyncio.Lock`) serializa las llamadas a `add_documents` porque TF-IDF no es thread-safe durante `fit_transform`. Para corpus institucionales típicos (decenas de PDFs) la espera es imperceptible.
 
 ### Cache de conversaciones
 
-Las conversaciones se persisten en Neon (PostgreSQL). Sin embargo, la VectorDB está en RAM (EphemeralClient) y se pierde en cada restart. **Para producción real:** considerar migrar a `PersistentClient` con un volume de Render (no disponible en plan Free).
+Las conversaciones se persisten en Neon (tabla `conversaciones`). El corpus TF-IDF se reconstruye desde la tabla `chunks` en cada startup.
 
 ---
 

@@ -31,6 +31,30 @@ class Documento(Base):
     # Llave foránea que conecta con el Usuario que subió el PDF
     usuario_id = Column(Integer, ForeignKey('usuarios.id'))
     subido_por = relationship("Usuario", back_populates="documentos")
+    chunks = relationship(
+        "Chunk",
+        back_populates="documento",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class Chunk(Base):
+    """Fragmentos de texto persistidos para reconstruir el corpus TF-IDF."""
+    __tablename__ = 'chunks'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    documento_id = Column(
+        Integer,
+        ForeignKey('documentos.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    source = Column(String(255), nullable=False)
+    
+    documento = relationship("Documento", back_populates="chunks")
 
 class Conversacion(Base):
     """Tabla para almacenar el historial de los chats RAG."""

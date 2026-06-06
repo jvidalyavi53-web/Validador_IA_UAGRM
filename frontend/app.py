@@ -176,6 +176,20 @@ def api_clear(token: str, username: str) -> dict:
     return {"error": _safe_json(res).get("detail", f"HTTP {res.status_code}")}
 
 
+def api_list_documents(token: str) -> dict:
+    try:
+        res = requests.get(
+            f"{API_URL}/documents",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=REQUEST_TIMEOUT_HISTORY,
+        )
+    except requests.exceptions.ConnectionError:
+        return {"error": "Sin conexión con el backend."}
+    if res.status_code == 200:
+        return {"ok": True, "data": _safe_json(res)}
+    return {"error": _safe_json(res).get("detail", f"HTTP {res.status_code}")}
+
+
 # ==============================================================================
 # 4. PERSISTENCIA DE SESIÓN CON COOKIES
 # ==============================================================================
@@ -567,27 +581,65 @@ with st.sidebar:
     else:
         st.markdown("<hr>", unsafe_allow_html=True)
         st.info(
-            "ℹ️ **Modo Visitante:** Puedes consultar a la IA, pero la carga de PDFs está deshabilitada."
+            "ℹ️ **Modo Visitante:** Puedes consultar el Corpus Normativo Institucional. "
+            "La carga de PDFs está reservada a Docentes / Administradores."
         )
+
+    # Catálogo del corpus institucional (visible para todos)
+    st.markdown("<hr>", unsafe_allow_html=True)
+    with st.expander("📚 Corpus Normativo Institucional", expanded=False):
+        catalogo = api_list_documents(st.session_state.access_token)
+        if "ok" in catalogo:
+            data = catalogo["data"]
+            total = data.get("total", 0)
+            chunks = data.get("corpus_chunks", 0)
+            st.markdown(
+                f"**{total} documento(s) · {chunks} fragmento(s) en memoria**"
+            )
+            if total == 0:
+                st.caption(
+                    "_El corpus aún no ha sido cargado. "
+                    "Solicite a un Administrador la subida de los PDFs normativos._"
+                )
+            else:
+                for d in data.get("documentos", []):
+                    fecha = (d.get("fecha_subida") or "")[:10]
+                    st.markdown(
+                        f"- 📄 `{d['nombre_archivo']}` · "
+                        f"{d.get('tamaño_bytes', 0) / 1024:.1f} KB · "
+                        f"_{fecha}_ · por `{d.get('subido_por', '?')}`"
+                    )
+        else:
+            st.warning(f"No se pudo cargar el catálogo: {catalogo.get('error')}")
 
 # --- CHAT CENTRAL ---
 if len(st.session_state.mensajes) == 0:
     st.markdown(
-        "<div style='height: 3vh;'></div><h2 style='text-align: center; font-weight: 800;'>Dashboard Seguro (Aislamiento Total)</h2>",
+        "<div style='height: 3vh;'></div><h2 style='text-align: center; font-weight: 800;'>Corpus Normativo Institucional</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align: center; opacity: 0.75;'>Plataforma API-First Enterprise · Motor RAG con búsqueda TF-IDF + Llama 3.3 70B</p>",
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         doc_img = render_img(get_asset("Documento_imagen.jpg"), 24)
         st.markdown(
-            f"<div class='feature-card'><div class='card-icon-wrapper'>{doc_img}</div><h4>Partición Privada</h4><p>Tus consultas y datos están protegidos en este entorno institucional.</p></div>",
+            f"<div class='feature-card'><div class='card-icon-wrapper'>{doc_img}</div><h4>Base Unificada</h4><p>Todos los usuarios autenticados consultan el mismo corpus normativo institucional.</p></div>",
             unsafe_allow_html=True,
         )
     with col2:
         file_img = render_img(get_asset("avatar_archivo.png"), 24)
         st.markdown(
-            f"<div class='feature-card'><div class='card-icon-wrapper'>{file_img}</div><h4>Memoria Inteligente</h4><p>El LLM enfoca su atención exclusivamente en la base de conocimiento activa.</p></div>",
+            f"<div class='feature-card'><div class='card-icon-wrapper'>{file_img}</div><h4>Memoria Persistente</h4><p>El corpus sobrevive a reinicios del servidor gracias a PostgreSQL + TF-IDF.</p></div>",
+            unsafe_allow_html=True,
+        )
+    with col3:
+        lock_img = render_img(get_asset("Icono_Candado_IniciarSesion.png"), 24)
+        st.markdown(
+            f"<div class='feature-card'><div class='card-icon-wrapper'>{lock_img}</div><h4>Acceso Controlado</h4><p>Solo Administradores pueden añadir PDFs. Todos pueden consultarlos.</p></div>",
             unsafe_allow_html=True,
         )
     st.markdown("<div style='height: 5vh;'></div>", unsafe_allow_html=True)

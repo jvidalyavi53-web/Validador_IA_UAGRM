@@ -97,6 +97,32 @@ class VectorDB:
             f"vocab={len(vectorizer.vocabulary_)}"
         )
 
+    def rebuild_from_rows(self, rows) -> None:
+        """
+        Reconstruye el índice desde filas de la tabla `chunks`.
+
+        `rows` es cualquier iterable con atributos: `content`, `source`.
+        Pensado para correr al startup con `db.query(models.Chunk).all()`.
+        """
+        self._documents = [r.content for r in rows]
+        self._metadatas = [{"source": r.source} for r in rows]
+        self._ids = [f"{r.source}_{i}__{i}" for i, r in enumerate(rows)]
+        self._vectorizer = None
+        self._doc_matrix = None
+
+        if not self._documents:
+            self._has_documents = False
+            logger.info("Reconstrucción: no hay chunks en la DB. Corpus vacío.")
+            return
+
+        vectorizer = self._ensure_vectorizer()
+        self._doc_matrix = vectorizer.fit_transform(self._documents)
+        self._has_documents = True
+        logger.info(
+            f"Reconstrucción: {len(self._documents)} chunks cargados desde DB · "
+            f"vocab={len(vectorizer.vocabulary_)}"
+        )
+
     def search(self, query: str, n_results: int = 5) -> dict:
         """Devuelve los n_results más similares por coseno."""
         if not self.is_ready():
