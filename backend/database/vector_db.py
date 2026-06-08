@@ -57,13 +57,12 @@ class VectorDB:
 
     def _ensure_vectorizer(self) -> TfidfVectorizer:
         if self._vectorizer is None:
+            # FIX: Eliminados max_df y min_df para que no explote con 1 solo archivo
             self._vectorizer = TfidfVectorizer(
                 lowercase=True,
                 strip_accents="unicode",
                 analyzer="word",
                 ngram_range=(1, 2),
-                max_df=0.95,
-                min_df=1,
                 max_features=50000,
                 sublinear_tf=True,
             )

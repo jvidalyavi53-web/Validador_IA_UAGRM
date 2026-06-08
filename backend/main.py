@@ -25,7 +25,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
@@ -216,6 +216,12 @@ class Token(BaseModel):
     rol: str
 
 
+# FIX: Nuevo esquema de Login para aceptar JSON puro desde Streamlit
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 # ==============================================================================
 # ENDPOINTS DE SALUD
 # ==============================================================================
@@ -282,17 +288,18 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Fallo interno al crear la cuenta.")
 
 
+# FIX: Login adaptado para usar LoginRequest (JSON)
 @app.post("/api/v1/auth/login", response_model=Token)
 def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    payload: LoginRequest,
     db: Session = Depends(get_db),
 ):
     user = (
         db.query(models.Usuario)
-        .filter(models.Usuario.username == form_data.username)
+        .filter(models.Usuario.username == payload.username)
         .first()
     )
-    if not user or not verify_password(form_data.password, user.password_hash):
+    if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
@@ -408,9 +415,6 @@ async def upload_document(
     }
 
 
-# ==============================================================================
-# ESTA ES LA RUTA NUEVA QUE SOLUCIONA EL CARTEL AMARILLO EN EL FRONTEND
-# ==============================================================================
 @app.get("/api/v1/documents", response_model=dict)
 def list_documents(
     current_user: models.Usuario = Depends(get_current_user),
@@ -423,7 +427,6 @@ def list_documents(
         .all()
     )
     
-    # Creamos un arreglo con la info formateada para que el frontend lo pueda leer
     documentos_formateados = []
     for d in docs:
         documentos_formateados.append({
