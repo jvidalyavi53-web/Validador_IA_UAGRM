@@ -94,9 +94,10 @@ def _safe_json(res: requests.Response) -> dict:
 
 def api_login(username: str, password: str) -> dict:
     try:
+        # CORRECCIÓN: Se cambió 'data=' por 'json=' para que envíe un diccionario estructurado
         res = requests.post(
             f"{API_URL}/auth/login",
-            data={"username": username, "password": password},
+            json={"username": username, "password": password},
             timeout=REQUEST_TIMEOUT_LOGIN,
         )
     except requests.exceptions.Timeout:
@@ -444,7 +445,7 @@ if not st.session_state.get("access_token"):
         if reg_rol == "admin":
             st.info(
                 "ℹ️ Para crear una cuenta de Administrador, necesita el Código de Autorización Institucional."
-            )
+                )
             reg_secret = st.text_input(
                 "Código de Autorización", type="password", key="reg_secret"
             )
@@ -619,7 +620,7 @@ if len(st.session_state.mensajes) == 0:
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='text-align: center; opacity: 0.75;'>Plataforma API-First Enterprise · Motor RAG con búsqueda TF-IDF + Llama 3.3 70B</p>",
+        "<p style='text-align: center;'>Plataforma API-First Enterprise · Motor RAG con búsqueda TF-IDF + Llama 3.3 70B</p>",
         unsafe_allow_html=True,
     )
 
