@@ -51,9 +51,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("UAGRM_CoreAPI")
 
-# ==============================================================================
+
 # CONFIGURACIÓN
-# ==============================================================================
+
 ALLOWED_ORIGINS = [
     o.strip()
     for o in os.getenv(
@@ -66,9 +66,7 @@ ALLOWED_ORIGINS = [
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 MAX_REQUEST_SECONDS = int(os.getenv("MAX_REQUEST_SECONDS", "50"))
 
-# ==============================================================================
 # CORPUS GLOBAL (compartido por todos los usuarios autenticados)
-# ==============================================================================
 global_vdb: VectorDB = VectorDB()
 global_engine: RAGEngine = RAGEngine(vdb_instance=global_vdb, provider="groq")
 corpus_lock = asyncio.Lock()  # serializa add_documents (TF-IDF no es thread-safe)
@@ -216,7 +214,6 @@ class Token(BaseModel):
     rol: str
 
 
-# FIX: Nuevo esquema de Login para aceptar JSON puro desde Streamlit
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -262,18 +259,22 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
                 detail="Código de Autorización Institucional incorrecto.",
             )
 
+        # FIX: Eliminamos los espacios en blanco que los teclados móviles añaden
+        clean_username = user.username.strip()
+        clean_password = user.password.strip()
+
         if (
             db.query(models.Usuario)
-            .filter(models.Usuario.username == user.username)
+            .filter(models.Usuario.username == clean_username)
             .first()
         ):
             raise HTTPException(
                 status_code=400, detail="El nombre de usuario ya está ocupado."
             )
 
-        hashed_password = get_password_hash(user.password)
+        hashed_password = get_password_hash(clean_password)
         nuevo_usuario = models.Usuario(
-            username=user.username,
+            username=clean_username,
             password_hash=hashed_password,
             rol=user.rol,
         )
@@ -288,18 +289,21 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Fallo interno al crear la cuenta.")
 
 
-# FIX: Login adaptado para usar LoginRequest (JSON)
 @app.post("/api/v1/auth/login", response_model=Token)
 def login_for_access_token(
     payload: LoginRequest,
     db: Session = Depends(get_db),
 ):
+    # FIX: Limpiamos los espacios antes de verificar en la base de datos
+    clean_username = payload.username.strip()
+    clean_password = payload.password.strip()
+
     user = (
         db.query(models.Usuario)
-        .filter(models.Usuario.username == payload.username)
+        .filter(models.Usuario.username == clean_username)
         .first()
     )
-    if not user or not verify_password(payload.password, user.password_hash):
+    if not user or not verify_password(clean_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
