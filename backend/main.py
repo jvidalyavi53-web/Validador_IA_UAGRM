@@ -324,9 +324,8 @@ def me(user: models.Usuario = Depends(get_current_user)):
     return {"username": user.username, "rol": user.rol}
 
 
-# ==============================================================================
 # ENDPOINTS RAG / DOCUMENTOS
-# ==============================================================================
+
 @app.post("/api/v1/documents/upload", status_code=200)
 async def upload_document(
     file: UploadFile = File(...),

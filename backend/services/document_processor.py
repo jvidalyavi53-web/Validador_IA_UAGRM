@@ -2,120 +2,86 @@ import os
 import io
 import re
 import logging
-from typing import Optional, Any
+from typing import Optional
+import requests
 
 import fitz
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+class _MindeeOCR:
+    """Motor OCR en la nube usando Mindee API para liberar la RAM del servidor local."""
 
-class _BaseOCR:
-    """Interfaz común: extract_text(pil_image) -> str"""
-
-    name: str = "base"
-    enabled: bool = True
-
-    def extract_text(self, img: Image.Image, lang: str = "es") -> str:
-        raise NotImplementedError
-
-
-class _TesseractOCR(_BaseOCR):
-    def __init__(self, tesseract_cmd: Optional[str] = None) -> None:
-        self.name = "tesseract"
-        try:
-            import pytesseract
-
-            if tesseract_cmd:
-                pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-            pytesseract.get_tesseract_version()
-            self._pytesseract = pytesseract
-            logger.info("OCR engine: Tesseract (binario nativo)")
-        except Exception as exc:
-            self.enabled = False
-            self._error = exc
-            logger.warning(f"Tesseract NO disponible ({exc}); se buscará RapidOCR.")
+    def __init__(self, api_key: str) -> None:
+        self.name = "mindee"
+        self.api_key = api_key
+        self.enabled = bool(api_key)
+        if self.enabled:
+            logger.info("OCR engine: Mindee Cloud API (Activo)")
+        else:
+            logger.warning("Mindee API key no proporcionada. OCR deshabilitado.")
 
     def extract_text(self, img: Image.Image, lang: str = "es") -> str:
         if not self.enabled:
             return ""
-        lang_map = {"es": "spa", "en": "eng"}
-        return self._pytesseract.image_to_string(img, lang=lang_map.get(lang, "spa"))
 
+        url = "https://api.mindee.net/v1/products/mindee/doctr/v1/predict"
+        headers = {"Authorization": f"Token {self.api_key}"}
 
-class _RapidOCR(_BaseOCR):
-    """OCR 100% Python (modelos ONNX). No requiere binarios del sistema."""
+        # Convertir PIL Image a bytes para enviarlo por HTTP
+        img_byte_arr = io.BytesIO()
+        # Guardamos la imagen en formato JPEG con calidad 85 para hacer la transferencia rapidísima
+        img.save(img_byte_arr, format='JPEG', quality=85)
+        img_byte_arr.seek(0)
 
-    def __init__(self) -> None:
-        self.name = "rapidocr"
+        files = {"document": ("page.jpg", img_byte_arr, "image/jpeg")}
+
         try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore
+            # Enviamos la imagen a los servidores de Mindee
+            response = requests.post(url, files=files, headers=headers, timeout=45)
+            response.raise_for_status()
+            data = response.json()
 
-            self._engine = RapidOCR()
-            self.enabled = True
-            logger.info("OCR engine: RapidOCR (ONNX, pure-Python).")
+            texto_completo = ""
+            # Recorremos la estructura JSON que devuelve Mindee para armar las oraciones
+            pages = data.get('document', {}).get('inference', {}).get('pages', [])
+            for page in pages:
+                words = page.get('prediction', {}).get('words', [])
+                for word in words:
+                    texto_completo += word.get('text', '') + " "
+                texto_completo += "\n"
+
+            return texto_completo.strip()
+            
+        except requests.exceptions.Timeout:
+            logger.error("Mindee API tardó demasiado en responder (Timeout).")
+            return ""
         except Exception as exc:
-            self.enabled = False
-            self._error = exc
-            logger.warning(
-                f"RapidOCR NO disponible ({exc}); OCR deshabilitado por completo."
-            )
-
-    def extract_text(self, img: Image.Image, lang: str = "es") -> str:
-        if not self.enabled:
+            logger.error(f"Fallo en la conexión con Mindee API: {exc}")
             return ""
-        import numpy as np
-
-        arr = np.array(img.convert("RGB"))
-        result, _elapse = self._engine(arr)
-        if not result:
-            return ""
-        return "\n".join([line[1] for line in result if line and len(line) > 1])
 
 
 class DocumentProcessor:
     """
-    Procesa PDFs: extrae texto nativo y, si la página parece escaneada,
-    aplica OCR. Soporta Tesseract (si el binario está) o RapidOCR (pure-Python).
-    Si ninguno está disponible, las páginas escaneadas se omiten sin tirar la app.
+    Procesa PDFs: extrae texto nativo de manera inmediata y, si detecta una página 
+    escaneada (sin texto nativo), delega el esfuerzo del OCR externo a la API de Mindee 
+    para no saturar la memoria RAM del entorno host (ej. Render).
     """
 
     def __init__(self, tesseract_cmd_path: Optional[str] = None) -> None:
-        # Prioridad 1: Tesseract (si el binario existe en el sistema)
-        self._ocr_backends: list[_BaseOCR] = []
-        tess = _TesseractOCR(tesseract_cmd_path)
-        if tess.enabled:
-            self._ocr_backends.append(tess)
+        # Extraemos la llave desde las variables de entorno por seguridad, 
+        # pero inyectamos tu llave de Mindee como valor por defecto (Fallback).
+        api_key = os.getenv("MINDEE_API_KEY", "md_LbpfP3nYfIyfcLL627uWmDSbU7B5DGhOjM2obhEWaeQ")
+        
+        self._ocr_engine = _MindeeOCR(api_key=api_key)
+        self.ocr_enabled: bool = self._ocr_engine.enabled
 
-        # Prioridad 2: RapidOCR (pure-Python, siempre disponible si está instalado)
-        rapid = _RapidOCR()
-        if rapid.enabled:
-            self._ocr_backends.append(rapid)
-
-        if not self._ocr_backends:
-            logger.warning(
-                "Ningún motor OCR disponible. Solo se procesará texto nativo de PDFs."
-            )
-        else:
-            logger.info(
-                f"OCR chain (en orden de intento): "
-                f"{[b.name for b in self._ocr_backends]}"
-            )
-
-        self.ocr_enabled: bool = bool(self._ocr_backends)
-
-    def _ocr_with_fallback(self, img: Image.Image) -> str:
-        """Prueba cada backend en orden; devuelve el primer resultado no vacío."""
-        for backend in self._ocr_backends:
-            try:
-                text = backend.extract_text(img, lang="es")
-                if text and text.strip():
-                    return text
-            except Exception as exc:
-                logger.warning(f"OCR backend {backend.name} falló: {exc}")
-        return ""
+        if not self.ocr_enabled:
+            logger.warning("Ningún motor OCR Cloud disponible. Solo se procesará texto nativo.")
 
     def clean_ocr_text(self, text: str) -> str:
+        # Limpieza básica de saltos de línea y espacios múltiples
         text = re.sub(r"\n+", "\n", text)
         text = re.sub(r" +", " ", text)
         return text
@@ -140,22 +106,28 @@ class DocumentProcessor:
                     f"\n[--- INICIO PÁGINA {page_num + 1} ---]\n"
                 )
 
+                # Intento 1: Extracción limpia (Documentos nativos)
                 text = page.get_text() or ""
 
+                # Intento 2: Si el texto extraído es mínimo (< 50 caracteres), asumimos que es una imagen escaneada
                 if len(text.strip()) < 50:
                     if not self.ocr_enabled:
                         text_content.append(
-                            "[Página escaneada omitida: ningún motor OCR disponible]"
+                            "[Página escaneada omitida: motor OCR Cloud deshabilitado]"
                         )
                     else:
                         try:
-                            mat = fitz.Matrix(3, 3)
-                            pix = page.get_pixmap(matrix=mat)
+                            logger.info(f"Página {page_num + 1} escaneada. Enviando a los servidores de Mindee...")
+                            
+                            # Corrección clave: Extraer el pixmap usando dpi directamente, sin Matrix
+                            pix = page.get_pixmap(dpi=150)
                             img = Image.open(io.BytesIO(pix.tobytes()))
-                            text = self._ocr_with_fallback(img)
+                            
+                            # La magia: Delegamos el trabajo al motor externo
+                            text = self._ocr_engine.extract_text(img)
                         except Exception as ocr_exc:
                             logger.warning(
-                                f"OCR falló en página {page_num + 1}: {ocr_exc}"
+                                f"OCR de Mindee falló en la página {page_num + 1}: {ocr_exc}"
                             )
                             text = ""
 
@@ -171,5 +143,5 @@ class DocumentProcessor:
             pdf_document.close()
             return "".join(text_content)
         except Exception as exc:
-            logger.error(f"Error procesando el PDF: {exc}")
+            logger.error(f"Error crítico procesando el PDF: {exc}")
             raise RuntimeError(f"No se pudo procesar el PDF: {exc}") from exc
