@@ -6,7 +6,7 @@ from typing import Tuple
 from dotenv import load_dotenv
 
 from langchain_groq import ChatGroq
-from langchain_community.chat_models import ChatOllama
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -58,12 +58,8 @@ class RAGEngine:
                 timeout=GROQ_TIMEOUT,
                 max_retries=GROQ_MAX_RETRIES,
             )
-        return ChatOllama(
-            model="llama3",
-            temperature=0.1,
-            num_predict=1024,
-            repeat_penalty=1.25,
-        )
+       
+        
 
     def set_provider(self, provider: str) -> None:
         """Cambia de proveedor de manera segura (una sola vez por motor)."""
