@@ -61,7 +61,7 @@ class RAGEngine:
             model="llama3",
             temperature=0.1,
             num_predict=1024,
-            repeat_penalty=1.25,  # Prevención de Model Collapse
+            repeat_penalty=1.25,
         )
 
     def set_provider(self, provider: str) -> None:
@@ -95,13 +95,13 @@ class RAGEngine:
                 "REGLAS:\n"
                 "1. Tu tono es institucional y directo.\n"
                 "2. Usa listas (viñetas) si se piden múltiples elementos.\n"
-                "3. Cita el documento de origen.\n"
-                "4. NO inventes información.\n\n"
+                "3. CRÍTICO: Si la pregunta requiere información de diferentes documentos, DEBES cruzar los datos y unificarlos en tu respuesta.\n"
+                "4. NO inventes información. Responde estrictamente con los datos proporcionados en el corpus.\n\n"
                 "<CORPUS_DOCUMENTAL>\n{context}\n</CORPUS_DOCUMENTAL>"
             )
             human_reinforcement = (
                 "CONSULTA DEL USUARIO:\n{query}\n\n"
-                "INSTRUCCIÓN FINAL: Responde con claridad y estructura profesional basada en el contexto."
+                "INSTRUCCIÓN FINAL: Responde con claridad, cruza la información si es necesario y mantén una estructura profesional."
             )
         return system_prompt, human_reinforcement
 
@@ -134,13 +134,15 @@ class RAGEngine:
                 logger.info("VectorDB vacía: respondiendo en modo conversacional.")
                 return self._ask_conversational(query)
 
-            search_results = self.vdb.search(query, n_results=10)
+            # FIX CRÍTICO: Aumentamos a 20 resultados. 
+            # Como los chunks ahora son pequeños, traer 20 permite que la IA vea múltiples documentos a la vez.
+            search_results = self.vdb.search(query, n_results=20)
             if (
                 not search_results
                 or not search_results.get("documents")
                 or not search_results["documents"][0]
             ):
-                return "**OBSERVADO**\n\nLa base de conocimiento está vacía. Ingrese documentos PDF desde la Biblioteca Institucional."
+                return "**OBSERVADO**\n\nLa base de conocimiento está vacía o no se encontraron coincidencias."
 
             context_pieces = []
             fuentes_unicas = set()

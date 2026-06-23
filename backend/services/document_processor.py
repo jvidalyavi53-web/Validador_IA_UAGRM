@@ -21,11 +21,9 @@ class _MindeeOCR:
             logger.info("OCR engine: Mindee Cloud API (Activo)")
         else:
             logger.warning("Mindee API key no proporcionada. OCR deshabilitado.")
-
     def extract_text(self, img: Image.Image, lang: str = "es") -> str:
         if not self.enabled:
             return ""
-
         url = "https://api.mindee.net/v1/products/mindee/doctr/v1/predict"
         headers = {"Authorization": f"Token {self.api_key}"}
 
@@ -60,7 +58,6 @@ class _MindeeOCR:
         except Exception as exc:
             logger.error(f"Fallo en la conexión con Mindee API: {exc}")
             return ""
-
 
 class DocumentProcessor:
     """

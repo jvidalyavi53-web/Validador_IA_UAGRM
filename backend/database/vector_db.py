@@ -7,10 +7,6 @@ Ventajas vs ChromaDB + embeddings remotos:
   - Sin modelos que descargar
   - Funciona en cualquier entorno Python (Render Free, local, offline)
   - Suficiente para retrieval de palabras clave en documentos normativos
-
-Trade-off: TF-IDF es bag-of-words; no captura sinónimos ni paráfrasis como
-los embeddings semánticos, pero es robusto y determinista para búsqueda
-por términos exactos y coincidencia parcial.
 """
 import logging
 from typing import List, Tuple
@@ -26,12 +22,7 @@ COLLECTION_NAME = "normativas_uagrm"
 
 class VectorDB:
     """
-    Wrapper ligero. Compatible con la interfaz anterior:
-        - is_ready() -> bool
-        - add_documents(chunks: List[Document])
-        - search(query: str, n_results: int = 5) -> dict
-        - reset()
-
+    Wrapper ligero. Compatible con la interfaz anterior.
     Internamente: TF-IDFVectorizer + matriz sparse de documentos.
     """
 
@@ -57,12 +48,14 @@ class VectorDB:
 
     def _ensure_vectorizer(self) -> TfidfVectorizer:
         if self._vectorizer is None:
-            # FIX: Eliminados max_df y min_df para que no explote con 1 solo archivo
             self._vectorizer = TfidfVectorizer(
                 lowercase=True,
                 strip_accents="unicode",
                 analyzer="word",
-                ngram_range=(1, 2),
+                # FIX CRÍTICO: Permite buscar códigos como "187-6", "INF-110", "Z4" sin destruirlos
+                token_pattern=r"(?u)\b[\w-]+\b",
+                # FIX: Aumentado a (1, 3) para capturar frases clave de hasta 3 palabras juntas
+                ngram_range=(1, 3),
                 max_features=50000,
                 sublinear_tf=True,
             )
@@ -84,8 +77,6 @@ class VectorDB:
         self._metadatas.extend(new_metas)
         self._ids.extend(new_ids)
 
-        # Reentrenar el vectorizador con TODOS los documentos.
-        # TF-IDF necesita ver el corpus completo para calcular IDF.
         vectorizer = self._ensure_vectorizer()
         self._doc_matrix = vectorizer.fit_transform(self._documents)
         self._has_documents = self._doc_matrix.shape[0] > 0
@@ -97,12 +88,7 @@ class VectorDB:
         )
 
     def rebuild_from_rows(self, rows) -> None:
-        """
-        Reconstruye el índice desde filas de la tabla `chunks`.
-
-        `rows` es cualquier iterable con atributos: `content`, `source`.
-        Pensado para correr al startup con `db.query(models.Chunk).all()`.
-        """
+        """Reconstruye el índice desde filas de la tabla `chunks`."""
         self._documents = [r.content for r in rows]
         self._metadatas = [{"source": r.source} for r in rows]
         self._ids = [f"{r.source}_{i}__{i}" for i, r in enumerate(rows)]
@@ -122,7 +108,8 @@ class VectorDB:
             f"vocab={len(vectorizer.vocabulary_)}"
         )
 
-    def search(self, query: str, n_results: int = 5) -> dict:
+    # FIX: Aumentado el default a 15 resultados para permitir cruce de documentos múltiples
+    def search(self, query: str, n_results: int = 15) -> dict:
         """Devuelve los n_results más similares por coseno."""
         if not self.is_ready():
             return {"documents": [[]], "metadatas": [[]]}
@@ -134,7 +121,6 @@ class VectorDB:
         if sims.size == 0:
             return {"documents": [[]], "metadatas": [[]]}
 
-        # Top-k por similitud descendente
         top_n = min(n_results, sims.size)
         top_idx = np.argsort(-sims)[:top_n]
 

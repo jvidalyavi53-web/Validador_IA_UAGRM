@@ -588,7 +588,7 @@ with st.sidebar:
 
     # Catálogo del corpus institucional (visible para todos)
     st.markdown("<hr>", unsafe_allow_html=True)
-    with st.expander("📚 Corpus Normativo Institucional", expanded=False):
+    with st.expander("Corpus Normativo Institucional", expanded=False):
         catalogo = api_list_documents(st.session_state.access_token)
         if "ok" in catalogo:
             data = catalogo["data"]
