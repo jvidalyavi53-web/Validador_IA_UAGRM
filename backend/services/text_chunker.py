@@ -1,3 +1,4 @@
+# VERSION DEFINITIVA RAG ACTIVADA
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import logging
 

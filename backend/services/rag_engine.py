@@ -1,3 +1,4 @@
+# VERSION DEFINITIVA RAG ACTIVADA
 import os
 import re
 import logging
